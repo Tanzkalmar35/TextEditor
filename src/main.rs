@@ -20,6 +20,7 @@ pub use document::Document;
 
 /// This text editor is built using the foundation from this blog:
 /// https://www.flenker.blog/hecto/
+/// TODO: Can't submit search results and stay at pos
 fn main() {
     Editor::default().run();
 }

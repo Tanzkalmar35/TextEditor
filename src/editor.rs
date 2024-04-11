@@ -12,7 +12,7 @@ const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -58,7 +58,7 @@ impl Editor {
 
     pub fn default() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut initial_status = String::from("HELP: Ctrl-S = save | Ctrl-Q = quit");
+        let mut initial_status = String::from("HELP: Ctrl-F = find | Ctrl-S = save | Ctrl-Q = quit");
         let document = if args.len() > 1 {
             let file_name = &args[1];
             let doc = Document::open(&file_name);
@@ -102,7 +102,7 @@ impl Editor {
 
     fn save(&mut self) {
         if self.document.file_name.is_none() {
-            let new_name = self.prompt("Save as: ").unwrap_or(None);
+            let new_name = self.prompt("Save as: ", |_, _, _| {}).unwrap_or(None);
             if new_name.is_none() {
                 self.status_message = StatusMessage::from("Save aborted.".to_string());
                 return;
@@ -117,11 +117,41 @@ impl Editor {
         }
     }
 
+    fn search(&mut self) {
+        let old_position = self.cursor_position.clone();
+        if let Some(query) = self.prompt("Search: ", |editor, key, query| {
+            let mut moved = false;
+            match key {
+                Key::Down => {
+                    editor.move_cursor(Key::Right);
+                    moved = true;
+                },
+                _ => (),
+            }
+            if let Some(position) = editor.document.find(&query, &editor.cursor_position) {
+                editor.cursor_position = position;
+                editor.scroll();
+            } else if moved {
+                editor.move_cursor(Key::Left);
+            }
+        }).unwrap_or(None) {
+            if let Some(position) = self.document.find(&query[..], &old_position) {
+                self.cursor_position = position;
+            } else {
+                self.status_message = StatusMessage::from(format!("Not found: {}.", query));
+            }
+        } else {
+            self.cursor_position = old_position;
+            self.scroll();
+        }
+    }
+
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
         let pressed_key = Terminal::read_key()?;
         match pressed_key {
-            Key::Ctrl('a') => self.attempt_quit(),
+            Key::Ctrl('q') => self.attempt_quit(),
             Key::Ctrl('s') => self.save(),
+            Key::Ctrl('f') => self.search(),
             Key::Char(c) => {
                 self.document.insert(&self.cursor_position, c);
                 self.move_cursor(Key::Right);
@@ -315,26 +345,33 @@ impl Editor {
         }
     }
 
-    fn prompt(&mut self, prompt: &str) -> Result<Option<String>, std::io::Error> {
+    fn prompt<C>(&mut self, prompt: &str, callback: C) -> Result<Option<String>, std::io::Error> where C: Fn(&mut Self, Key, &String) {
         let mut res = String::new();
         loop {
             self.status_message = StatusMessage::from(format!("{}{}", prompt, res));
             self.refresh_screen()?;
-            match Terminal::read_key()? {
+            let key = Terminal::read_key()?;
+            match key {
                 Key::Backspace => {
                     if !res.is_empty() {
                         res.truncate(res.len() - 1);
                     }
-                }
-                Key::Char('\n') => break,
+                },
+                Key::Esc => {
+                    self.status_message = StatusMessage::from(String::from(""));
+                    return Ok(None);
+                },
+                Key::Char('\n') => {
+                    break;
+                },
                 Key::Char(c) => {
                     if !c.is_control() {
                         res.push(c);
                     }
                 }
                 _ => (),
-                
             }
+            callback(self, key, &res);
         }
         self.status_message = StatusMessage::from(String::new());
         if res.is_empty() {
@@ -346,7 +383,7 @@ impl Editor {
     fn attempt_quit(&mut self) {
         if self.document.is_changed() {
             loop {
-                let res = self.prompt("WARNING! File has unsaved changes. Save it? (y/n)").unwrap_or(None);
+                let res = self.prompt("WARNING! File has unsaved changes. Save it? (y/n)", |_, _, _| {}).unwrap_or(None);
                 if let Some(ans) = res {
                     if ans.eq("y") {
                         self.save();
@@ -359,6 +396,7 @@ impl Editor {
                 }
             }
         }
+        self.should_quit = true;
     }
 }
 
