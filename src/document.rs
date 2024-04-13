@@ -3,6 +3,7 @@ use std::io::{Error, Write};
 
 use crate::Row;
 use crate::Position;
+use crate::SearchDirection;
 
 #[derive(Default)]
 pub struct Document {
@@ -99,13 +100,39 @@ impl Document {
         self.changed
     }
 
-    pub fn find(&self, query: &str, after: &Position) -> Option<Position> {
-        let mut x = after.x;
-        for (y, row) in self.rows.iter().enumerate().skip(after.y) {
-            if let Some(x) = row.find(query, x) {
-                return Some(Position {x, y});
+    #[allow(clippy::indexing_slicing)]
+    pub fn find(&self, query: &str, pos: &Position, dir: SearchDirection) -> Option<Position> {
+        if pos.y >= self.rows.len()  {
+            return None;
+        }
+        let mut pos = Position {x: pos.x, y: pos.y};
+
+        let start = if dir == SearchDirection::Forward {
+            pos.y
+        } else {
+            0
+        };
+        let end = if dir == SearchDirection::Forward {
+            self.rows.len()
+        } else {
+            pos.y.saturating_add(1)
+        };
+        for _ in start..end {
+            if let Some(row) = self.rows.get(pos.y) {
+                if let Some(x) = row.find(&query, pos.x, dir) {
+                    pos.x = x;
+                    return Some(pos);
+                }
+                if dir == SearchDirection::Forward {
+                    pos.y = pos.y.saturating_add(1);
+                    pos.x = 0;
+                } else {
+                    pos.y = pos.y.saturating_sub(1);
+                    pos.x = self.rows[pos.y].len();
+                }
+            } else {
+                return None;
             }
-            x = 0;
         }
         None
     }
