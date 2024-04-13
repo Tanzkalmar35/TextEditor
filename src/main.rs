@@ -11,6 +11,7 @@ mod document;
 mod row;
 mod editor;
 mod terminal;
+mod highlighting;
 
 use editor::Editor;
 pub use terminal::Terminal;
@@ -21,6 +22,7 @@ pub use editor::SearchDirection;
 
 /// This text editor is built using the foundation from this blog:
 /// https://www.flenker.blog/hecto/
+/// 07: Colorful members
 fn main() {
     Editor::default().run();
 }

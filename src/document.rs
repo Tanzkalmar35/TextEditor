@@ -17,7 +17,9 @@ impl Document {
         let contents = fs::read_to_string(filename)?;
         let mut rows = Vec::new();
         for value in contents.lines() {
-            rows.push(Row::from(value));
+            let mut row = Row::from(value);
+            row.highlight(None);
+            rows.push(row);
         }
         Ok( 
             Self { 
@@ -45,7 +47,11 @@ impl Document {
             self.rows.push(Row::default());
             return;
         }
-        let new_row = self.rows.get_mut(pos.y).unwrap().split(pos.x);
+        let current_row = &mut self.rows[pos.y];
+        let mut new_row = current_row.split(pos.x);
+        current_row.highlight(None);
+        new_row.highlight(None);
+        #[allow(clippy::integer_arithmetic)]
         self.rows.insert(pos.y + 1, new_row);
     }
 
@@ -61,10 +67,12 @@ impl Document {
         if pos.y == self.len() {
             let mut row = Row::default();
             row.insert(0, c);
+            row.highlight(None);
             self.rows.push(row);
         } else {
             let row = self.rows.get_mut(pos.y).unwrap();
-            row.insert(pos.x, c)
+            row.insert(pos.x, c);
+            row.highlight(None);
         }
     }
 
@@ -78,9 +86,11 @@ impl Document {
             let next_row = self.rows.remove(pos.y + 1);
             let row = self.rows.get_mut(pos.y).unwrap();
             row.append(&next_row);
+            row.highlight(None);
         } else {
             let row = self.rows.get_mut(pos.y).unwrap();
             row.delete(pos.x);
+            row.highlight(None);
         }
     }
 
@@ -135,5 +145,11 @@ impl Document {
             }
         }
         None
+    }
+
+    pub fn highlight(&mut self, word: Option<&str>) {
+        for row in &mut self.rows {
+            row.highlight(word);
+        }
     }
 }

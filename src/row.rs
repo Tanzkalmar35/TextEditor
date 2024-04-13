@@ -1,11 +1,14 @@
 use std::cmp;
 use unicode_segmentation::UnicodeSegmentation;
+use termion::color;
 
+use crate::highlighting;
 use crate::SearchDirection;
 
 #[derive(Default)]
 pub struct Row {
     string: String,
+    highlighting: Vec<highlighting::Type>,
     len: usize,
 }
 
@@ -13,6 +16,7 @@ impl From<&str> for Row {
     fn from(slice: &str) -> Self {
         Self {
             string: String::from(slice),
+            highlighting: Vec::new(),
             len: slice.graphemes(true).count(),
         }
     }
@@ -23,14 +27,27 @@ impl Row {
         let end = cmp::min(end, self.string.len());
         let start = cmp::min(start, end);
         let mut res = String::new();
-        // FYI: @link https://en.wikipedia.org/wiki/Grapheme
-        for grapheme in self.string[..].graphemes(true).skip(start).take(end - start) {
-            if grapheme == "\t" {
-                res.push_str("    ")
-            } else {
-                res.push_str(grapheme)
+        let mut current_highilghting = &highlighting::Type::None;
+
+        #[allow(clippy::integer_arithmetic)]
+        for (idx, grapheme) in self.string[..].graphemes(true).enumerate().skip(start).take(end - start) {
+            if let Some(c) = grapheme.chars().next() {
+                let highlighting_type = self.highlighting.get(idx).unwrap_or(&highlighting::Type::None);
+                if highlighting_type != current_highilghting {
+                    current_highilghting = highlighting_type;
+                    let start_hightlight = format!("{}", termion::color::Fg(highlighting_type.to_color()));
+                    res.push_str(&start_hightlight[..]);
+                }
+                if c == '\t' {
+                    res.push_str(" ");
+                } else {
+                    res.push(c)
+                }
             }
         }
+        
+        let end_highlight = format!("{}", termion::color::Fg(color::Reset));
+        res.push_str(&end_highlight[..]);
         res
     }
 
@@ -103,6 +120,7 @@ impl Row {
         self.len = length;
         Self {
             string: splitted_row,
+            highlighting: Vec::new(),
             len: splitted_length,
         }
     }
@@ -112,7 +130,7 @@ impl Row {
     }
 
     pub fn find(&self, query: &str, pos: usize, dir: SearchDirection) -> Option<usize> {
-        if pos > self.len {
+        if pos > self.len || query.is_empty() {
             return None;
         }
         let start = if dir == SearchDirection::Forward {
@@ -141,5 +159,45 @@ impl Row {
             }
         }
         None
+    }
+
+    pub fn highlight(&mut self, word: Option<&str>) {
+        let mut highlighting = Vec::new();
+        let chars: Vec<char> = self.string.chars().collect();
+        let mut matches = Vec::new();
+        let mut search_idx = 0;
+
+        if let Some(word) = word {
+            while let Some(search_match) = self.find(word, search_idx, SearchDirection::Forward) {
+                matches.push(search_match);
+                if let Some(next_idx) = search_match.checked_add(word[..].graphemes(true).count()) {
+                    search_idx = next_idx;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        let mut idx = 0;
+        while let Some(c) = chars.get(idx) {
+            if let Some(word) = word {
+                if matches.contains(&idx) {
+                    for _ in word[..].graphemes(true) {
+                        idx += 1;
+                        highlighting.push(highlighting::Type::SearchResult);
+                    }
+                    continue;
+                }
+            }
+            
+            if c.is_ascii_digit() {
+                highlighting.push(highlighting::Type::Number);
+            } else {
+                highlighting.push(highlighting::Type::None);
+            }
+            idx += 1;
+        }
+
+        self.highlighting = highlighting;
     }
 }
