@@ -135,8 +135,9 @@ impl Editor {
                 editor.move_cursor(Key::Left);
             }
         }).unwrap_or(None) {
-            if let Some(position) = self.document.find(&query[..], &old_position) {
+            if let Some(position) = self.document.find(&query[..], &self.cursor_position) {
                 self.cursor_position = position;
+                self.scroll();
             } else {
                 self.status_message = StatusMessage::from(format!("Not found: {}.", query));
             }
