@@ -320,13 +320,14 @@ impl Editor {
         }
         status = format!("{} - {} lines", file_name, self.document.len());
         let line_indicator = format!(
-            "{}/{}",
+            "{} | {}/{}",
+            self.document.file_type(),
             self.cursor_position.y.saturating_add(1),
             self.document.len()
         );
         let len = status.len() + line_indicator.len();
         if width > len {
-            status.push_str(&" ".repeat(width- len))
+            status.push_str(&" ".repeat(width - len))
         }
 
         status = format!(
