@@ -180,6 +180,7 @@ impl Row {
         }
 
         let mut prev_is_seperator = true;
+        let mut in_string = false;
         let mut idx = 0;
         while let Some(c) = chars.get(idx) {
             if let Some(word) = word {
@@ -197,9 +198,35 @@ impl Row {
             } else {
                 &highlighting::Type::None
             };
+            if opts.strings() {
+                if in_string {
+                    highlighting.push(highlighting::Type::String);
+
+                    if *c == '\\' && idx < self.len().saturating_sub(1) {
+                        highlighting.push(highlighting::Type::String);
+                        idx += 2;
+                        continue;
+                    }
+
+                    if *c == '"' {
+                        in_string = false;
+                        prev_is_seperator = true;
+                    } else {
+                        prev_is_seperator = false;
+                    }
+                    idx += 1;
+                    continue;
+                } else if prev_is_seperator && *c == '"' {
+                    highlighting.push(highlighting::Type::String);
+                    in_string = true;
+                    prev_is_seperator = true;
+                    idx += 1;
+                    continue;
+                }
+            }
             if opts.numbers() {
-                if (c.is_ascii_digit() && (prev_is_seperator || prev_highlight == &highlighting::Type::Number))
-                    || (c == &'.' && prev_highlight == &highlighting::Type::Number) {
+                if (c.is_ascii_digit() && (prev_is_seperator || *prev_highlight == highlighting::Type::Number))
+                    || (*c == '.' && *prev_highlight == highlighting::Type::Number) {
                     highlighting.push(highlighting::Type::Number);
                 } else {
                     highlighting.push(highlighting::Type::None);
