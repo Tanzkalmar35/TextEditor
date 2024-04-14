@@ -1,4 +1,5 @@
 use std::cmp;
+use termion::event::Key;
 use unicode_segmentation::UnicodeSegmentation;
 use termion::color;
 
@@ -198,6 +199,28 @@ impl Row {
             } else {
                 &highlighting::Type::None
             };
+            if opts.characters() && !in_string && *c == '\'' {
+                prev_is_seperator = true;
+                if let Some(next_char) = chars.get(idx.saturating_add(1)) {
+                    let closing_idx = if *next_char == '\\' {
+                        idx.saturating_add(3)
+                    } else {
+                        idx.saturating_add(2)
+                    }; 
+                    if let Some(closing_char) = chars.get(closing_idx) {
+                        if *closing_char == '\'' {
+                            for _ in 0..=closing_idx.saturating_sub(idx) {
+                                highlighting.push(highlighting::Type::Character);
+                                idx += 1;
+                            }
+                            continue;
+                        }
+                    }
+                };
+                highlighting.push(highlighting::Type::None);
+                idx += 1;
+                continue;
+            }
             if opts.strings() {
                 if in_string {
                     highlighting.push(highlighting::Type::String);
