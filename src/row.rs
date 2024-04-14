@@ -199,6 +199,16 @@ impl Row {
             } else {
                 &highlighting::Type::None
             };
+            if opts.comments() && *c == '/' {
+                if let Some(next_char) = chars.get(idx.saturating_add(1)) {
+                    if *next_char == '/' {
+                        for _ in idx..chars.len() {
+                            highlighting.push(highlighting::Type::Comment);
+                        }
+                        break;
+                    }
+                };
+            }
             if opts.characters() && !in_string && *c == '\'' {
                 prev_is_seperator = true;
                 if let Some(next_char) = chars.get(idx.saturating_add(1)) {
