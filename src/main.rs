@@ -25,7 +25,7 @@ pub use editor::SearchDirection;
 
 /// This text editor is built using the foundation from this blog:
 /// https://archive.flenker.blog/hecto/
-/// 07: Improve code quality
+/// 07: Color keywords
 fn main() {
     Editor::default().run();
 }

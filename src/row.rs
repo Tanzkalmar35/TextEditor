@@ -1,5 +1,4 @@
 use std::cmp;
-use termion::event::Key;
 use unicode_segmentation::UnicodeSegmentation;
 use termion::color;
 
@@ -163,114 +162,121 @@ impl Row {
         None
     }
 
-    pub fn highlight(&mut self, opts: HighlightingOptions, word: Option<&str>) {
-        let mut highlighting = Vec::new();
-        let chars: Vec<char> = self.string.chars().collect();
-        let mut matches = Vec::new();
-        let mut search_idx = 0;
-
+    fn highlight_search_res(&mut self, word: Option<&str>) {
         if let Some(word) = word {
-            while let Some(search_match) = self.find(word, search_idx, SearchDirection::Forward) {
-                matches.push(search_match);
+            if word.is_empty() {
+                return;
+            }
+            let mut idx = 0;
+            while let Some(search_match) = self.find(word, idx, SearchDirection::Forward) {
                 if let Some(next_idx) = search_match.checked_add(word[..].graphemes(true).count()) {
-                    search_idx = next_idx;
+                    #[allow(clippy::indexing_slicing)]
+                    for i in search_match..next_idx {
+                        self.highlighting[i] = highlighting::Type::SearchResult;
+                    }
+                    idx = next_idx;
                 } else {
                     break;
                 }
             }
         }
+    }
 
-        let mut prev_is_seperator = true;
-        let mut in_string = false;
-        let mut idx = 0;
-        while let Some(c) = chars.get(idx) {
-            if let Some(word) = word {
-                if matches.contains(&idx) {
-                    for _ in word[..].graphemes(true) {
-                        idx += 1;
-                        highlighting.push(highlighting::Type::SearchResult);
-                    }
-                    continue;
-                }
-            }
-            
-            let prev_highlight = if idx > 0 {
-                highlighting.get(idx - 1).unwrap_or(&highlighting::Type::None)
-            } else {
-                &highlighting::Type::None
-            };
-            if opts.comments() && *c == '/' {
-                if let Some(next_char) = chars.get(idx.saturating_add(1)) {
-                    if *next_char == '/' {
-                        for _ in idx..chars.len() {
-                            highlighting.push(highlighting::Type::Comment);
+    fn highlight_char(&mut self, idx: &mut usize, opts: HighlightingOptions, c: char, chars: &[char]) -> bool {
+        if opts.characters() && c == '\'' {
+            if let Some(next_char) = chars.get(idx.saturating_add(1)) {
+                let closing_idx = if *next_char == '\\' {
+                    idx.saturating_add(3)
+                } else {
+                    idx.saturating_add(2)
+                };
+                if let Some(closing_char) = chars.get(closing_idx) {
+                    if *closing_char == '\'' {
+                        for _ in 0..=closing_idx.saturating_sub(*idx) {
+                            self.highlighting.push(highlighting::Type::Character);
+                            *idx += 1;
                         }
+                        return true;
+                    }
+                }
+            };
+        }
+        false
+    }
+
+    fn highilght_comment(&mut self, idx: &mut usize, opts: HighlightingOptions, c: char, chars: &[char]) -> bool {
+        if opts.comments() && c == '/' && *idx < chars.len() {
+            if let Some(next_char) = chars.get(idx.saturating_add(1)) {
+                if *next_char == '/' {
+                    for _ in *idx..chars.len() {
+                        self.highlighting.push(highlighting::Type::Comment);
+                    }
+                    return true;
+                }
+            };
+        }
+        false
+    }
+
+    fn highlight_string(&mut self, idx: &mut usize, opts: HighlightingOptions, c: char, chars: &[char]) -> bool {
+        if opts.strings() && c == '"' {
+            loop {
+                self.highlighting.push(highlighting::Type::String);
+                *idx += 1;
+                if let Some(next_char) = chars.get(*idx) {
+                    if *next_char == '"' {
                         break;
                     }
-                };
-            }
-            if opts.characters() && !in_string && *c == '\'' {
-                prev_is_seperator = true;
-                if let Some(next_char) = chars.get(idx.saturating_add(1)) {
-                    let closing_idx = if *next_char == '\\' {
-                        idx.saturating_add(3)
-                    } else {
-                        idx.saturating_add(2)
-                    }; 
-                    if let Some(closing_char) = chars.get(closing_idx) {
-                        if *closing_char == '\'' {
-                            for _ in 0..=closing_idx.saturating_sub(idx) {
-                                highlighting.push(highlighting::Type::Character);
-                                idx += 1;
-                            }
-                            continue;
-                        }
-                    }
-                };
-                highlighting.push(highlighting::Type::None);
-                idx += 1;
-                continue;
-            }
-            if opts.strings() {
-                if in_string {
-                    highlighting.push(highlighting::Type::String);
-
-                    if *c == '\\' && idx < self.len().saturating_sub(1) {
-                        highlighting.push(highlighting::Type::String);
-                        idx += 2;
-                        continue;
-                    }
-
-                    if *c == '"' {
-                        in_string = false;
-                        prev_is_seperator = true;
-                    } else {
-                        prev_is_seperator = false;
-                    }
-                    idx += 1;
-                    continue;
-                } else if prev_is_seperator && *c == '"' {
-                    highlighting.push(highlighting::Type::String);
-                    in_string = true;
-                    prev_is_seperator = true;
-                    idx += 1;
-                    continue;
+                } else {
+                    break;
                 }
             }
-            if opts.numbers() {
-                if (c.is_ascii_digit() && (prev_is_seperator || *prev_highlight == highlighting::Type::Number))
-                    || (*c == '.' && *prev_highlight == highlighting::Type::Number) {
-                    highlighting.push(highlighting::Type::Number);
-                } else {
-                    highlighting.push(highlighting::Type::None);
-                };
-                prev_is_seperator = c.is_ascii_punctuation() || c.is_ascii_whitespace();
-                idx += 1;
-            } else {
-                highlighting.push(highlighting::Type::None);
-            }
+            self.highlighting.push(highlighting::Type::String);
+            *idx += 1;
+            return true;
         }
+        false
+    }
 
-        self.highlighting = highlighting;
+    fn highlight_number(&mut self, idx: &mut usize, otps: HighlightingOptions, c: char, chars: &[char]) -> bool {
+        if otps.numbers() && c.is_ascii_digit() {
+            if *idx > 0 {
+                #[allow(clippy::indexing_slicing, clippy::integer_arithmetic)]
+                let prev_char = chars[*idx - 1];
+                if !prev_char.is_ascii_punctuation() && !prev_char.is_ascii_whitespace() {
+                    return false;
+                }
+            }
+            loop {
+                self.highlighting.push(highlighting::Type::Number);
+                *idx += 1;
+                if let Some(next_char) = chars.get(*idx) {
+                    if *next_char != '.' && !next_char.is_ascii_digit() {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            return true;
+        }
+        false
+    }
+
+    pub fn highlight(&mut self, opts: HighlightingOptions, word: Option<&str>) {
+        self.highlighting = Vec::new();
+        let chars: Vec<char> = self.string.chars().collect();
+        let mut idx = 0;
+        while let Some(c) = chars.get(idx) {
+            if self.highlight_char(&mut idx, opts, *c, &chars)
+                || self.highilght_comment(&mut idx, opts, *c, &chars)
+                || self.highlight_string(&mut idx, opts, *c, &chars)
+                || self.highlight_number(&mut idx, opts, *c, &chars) {
+                    continue;
+            }
+            self.highlighting.push(highlighting::Type::None);
+            idx += 1;
+        }
+        self.highlight_search_res(word);
     }
 }
