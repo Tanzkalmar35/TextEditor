@@ -21,16 +21,16 @@ impl Document {
         let mut rows = Vec::new();
         for value in contents.lines() {
             let mut row = Row::from(value);
-            row.highlight(file_type.highlighting_options(), None);
+            row.highlight(&file_type.highlighting_options(), None);
             rows.push(row);
         }
-        Ok( 
-            Self { 
-                rows, 
+        Ok(
+            Self {
+                rows,
                 file_name: Some(filename.to_string()),
                 changed: false,
                 file_type,
-            } 
+            }
         )
     }
 
@@ -57,9 +57,8 @@ impl Document {
         }
         let current_row = &mut self.rows[pos.y];
         let mut new_row = current_row.split(pos.x);
-        current_row.highlight(self.file_type.highlighting_options(), None);
-        new_row.highlight(self.file_type.highlighting_options(), None);
-        #[allow(clippy::integer_arithmetic)]
+        current_row.highlight(&self.file_type.highlighting_options(), None);
+        new_row.highlight(&self.file_type.highlighting_options(), None);
         self.rows.insert(pos.y + 1, new_row);
     }
 
@@ -75,12 +74,12 @@ impl Document {
         if pos.y == self.len() {
             let mut row = Row::default();
             row.insert(0, c);
-            row.highlight(self.file_type.highlighting_options(), None);
+            row.highlight(&self.file_type.highlighting_options(), None);
             self.rows.push(row);
         } else {
             let row = self.rows.get_mut(pos.y).unwrap();
             row.insert(pos.x, c);
-            row.highlight(self.file_type.highlighting_options(), None);
+            row.highlight(&self.file_type.highlighting_options(), None);
         }
     }
 
@@ -94,11 +93,11 @@ impl Document {
             let next_row = self.rows.remove(pos.y + 1);
             let row = self.rows.get_mut(pos.y).unwrap();
             row.append(&next_row);
-            row.highlight(self.file_type.highlighting_options(), None);
+            row.highlight(&self.file_type.highlighting_options(), None);
         } else {
             let row = self.rows.get_mut(pos.y).unwrap();
             row.delete(pos.x);
-            row.highlight(self.file_type.highlighting_options(), None);
+            row.highlight(&self.file_type.highlighting_options(), None);
         }
     }
 
@@ -109,7 +108,7 @@ impl Document {
             for row in &mut self.rows {
                 file.write_all(row.as_bytes())?;
                 file.write_all(b"\n")?;
-                row.highlight(self.file_type.highlighting_options(), None)
+                row.highlight(&self.file_type.highlighting_options(), None)
             }
             self.changed = false;
         }
@@ -120,7 +119,6 @@ impl Document {
         self.changed
     }
 
-    #[allow(clippy::indexing_slicing)]
     pub fn find(&self, query: &str, pos: &Position, dir: SearchDirection) -> Option<Position> {
         if pos.y >= self.rows.len()  {
             return None;
@@ -159,7 +157,7 @@ impl Document {
 
     pub fn highlight(&mut self, word: Option<&str>) {
         for row in &mut self.rows {
-            row.highlight(self.file_type.highlighting_options(), word);
+            row.highlight(&self.file_type.highlighting_options(), word);
         }
     }
 }
